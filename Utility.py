@@ -6,6 +6,7 @@ import MySQLdb as mdb
 from nltk.tokenize import word_tokenize, wordpunct_tokenize, sent_tokenize
 from nltk.corpus import stopwords
 from nltk.stem.lancaster import LancasterStemmer
+from nltk.stem.porter import PorterStemmer
 import re
 import nltk
 class DB:
@@ -107,6 +108,8 @@ class TextProcessor:
         u_list= text.split(self.WordSplitter())
         u_list = [word for word in u_list if word not in stopwords]
         return ' '.join(u_list)
+    def Tokenize(self,text):
+        return [t for t in word_tokenize(text)]
     def EliminateStopWords(self, wordList):
         '''
         Input: Tokenized word list
@@ -115,14 +118,15 @@ class TextProcessor:
         word_list = [t for t in word_tokenize(doc)]
         '''
         filtered_words = [w for w in wordList if not w in stopwords.words('english')]
-        punctuation = re.compile(r'[-.?!,":;()|0-9]')
+        punctuation = re.compile(r'[-+.?!,":;()|0-9]')
         filtered_words = [punctuation.sub("", word) for word in filtered_words]    
         return filtered_words
     def Stem(self,wordList):
+        #LStem = LancasterStemmer()
+        PStem = PorterStemmer()
         wordSet = []
         for word in wordList:
-            print word
-            temp = LancasterStemmer(word)
+            temp = PStem.stem(word)
             wordSet.append(temp)
         return wordSet
     def remove_values_from_list(self,the_list, val):
@@ -142,4 +146,6 @@ class Operation:
         return list(set(a) | set(b))
 class Parameter:
     def GetDocNumber(self):
-        return 200;
+        return 500000
+    def GetDocNumberForLocalContext(self):
+        return 5
