@@ -158,11 +158,16 @@ class Ontology:
         return terminology_dict
         
 class GO(Ontology):
+    variantDict = dict()
+    childrenDict = dict()
     '''Gene Ontology Handler'''
     def __init__(self):
         self.file_name = r'd:\project\ontology\go.xml'
         self.go_file = open(self.file_name)
-        
+        GO.variantDict = self.GetVariantDict()
+        GO.childrenDict = self.GetChildrenDict()
+        f = open(r'd:\project\temp\output.txt','w')
+        f.write(str(GO.variantDict))
     def ExtractTerms(self):
         print "Extracting Go Terms started..."
         tp = TextProcessor()
@@ -176,24 +181,72 @@ class GO(Ontology):
         for term in root.iter(tag='term'):
             accession = term.find('accession').text
             variant = term.find('name').text
+            children = ''
+            for child in term.iter(tag='is_a'):
+                if str(child.attrib['resource']).find('GO:') != -1:
+                    if len(children) > 0:
+                        children += ','    
+                    children += str(child.attrib['resource'])[31:41]
             for synonym in term.iter(tag='synonym'):
                 temp_syn = synonym.text;
                 if temp_syn.find('GO:') == -1:
                     variant += ' , ' + temp_syn
             if(query_values != ''):
-                query_values += ",('"+accession+"','"+tp.Clean(variant) +"')" 
+                query_values += ",('{0}','{1}','{2}')".format(accession,tp.Clean(variant),children) 
             else:
-                query_values =  "('"+accession+"','"+tp.Clean(variant) +"')" 
+                query_values =  "('{0}','{1}','{2}')".format(accession,tp.Clean(variant),children) 
             values += 1
             if values >= values_limit:
-                query = "insert into go(id,variant) values " + query_values +";"
+                query = "insert into go(id,variant,children) values " + query_values +";"
                 con.Query(query)
                 query_values = ''
                 values = 0
-        query = "insert into go(id,variant) values " +query_values+";"
+        query = "insert into go(id,variant,children) values " +query_values+";"
         con.Query(query)
         con.Close()
         print 'Extracting GO terms Done!'
+    @staticmethod
+    def GetPredecessors(conceptId):
+        variantDict = GO.variantDict
+        childrenDict = GO.childrenDict
+        result = []
+        result.append(variantDict[conceptId])
+        childrenId = childrenDict[conceptId]
+        try:
+            for child in childrenId:
+                result.append(GO.GetChildren(child))
+        except:
+            pass
+            print "---------------------------------------------------------->>>>>>>>>>>>>>>>>>>>>>>"
+        return ' '.join(result)
+    def GetVariantDict(self):
+        '''
+        returns a Dictionary containing each concept and it's variants
+        '''
+        db = DB()
+        tp = TextProcessor()
+        result = db.Execute('Select id, variant from go')
+        terminology_dict = dict()
+        for row in result:
+            variants = row[1].split(tp.Splitter())
+            variants = [c for c in variants if c != '']
+            terminology_dict[row[0]] = ' , '.join(variants)
+        db.Close()
+        return terminology_dict
+    def GetChildrenDict(self):
+        '''
+        returns a Dictionary containing each concept and it's children
+        '''
+        db = DB()
+        tp = TextProcessor()
+        result = db.Execute('Select id, children from go')
+        terminology_dict = dict()
+        for row in result:
+            children = row[1].split(tp.Splitter())
+            children = [c for c in children if c != '']
+            terminology_dict[row[0]] = children
+        db.Close()
+        return terminology_dict
 class MeSH(Ontology):
     """MeSH Ontology Handler."""
     #Gene ontology folder location    

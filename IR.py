@@ -1,11 +1,11 @@
 from Ontology import GO,MeSH,ICD10,SNOMED,Ontology
 from Utility import DB
 from Utility import TextProcessor,Operation,Parameter
-from datetime import datetime
 from sets import Set
 from math import log10,log
 from nltk.tokenize import word_tokenize
 class CSIR():
+    db = DB()
     def __init__(self):
         print "Good Luck with your IR!"
 
@@ -46,7 +46,7 @@ class CSIR():
         QueryList = ''   # To make queries faster, First we collect a banch of them
         QueryCount = 0
         QueryDone = 0
-        QueryLimit = 9
+        QueryLimit = 49
         N = param.GetDocNumber()
         DocCount = 0
         while True:
@@ -81,8 +81,8 @@ class CSIR():
                         db.Query(QueryList)
                         QueryCount = 0
                         QueryList = ''
-                        QueryDone += 10
-                        print QueryDone, '!' , datetime.now()
+                        QueryDone += QueryLimit+1
+                        print QueryDone," documents stored."
                     PMID = line
                     doc = ''
                     AB = ''
@@ -90,14 +90,9 @@ class CSIR():
                 if DocCount > N:
                     break
         QueryList = QueryList[:-1]
-        QueryList = 'Insert into doc(PMID,content,AB) values ' + QueryList
-        print QueryList
+        QueryList = 'Insert into doc(PMID,content,AB) values ' + QueryList 
         db.Query(QueryList)
-        #db.Query("delete from doc where content = '';")
-        #if db.con:
-            #db.close()
-        print "Storing Documents in Database Done!"
-
+        print "Preparing Documents is Done!"
     def ConceptExtraction(self):
         db = DB()        
         param = Parameter()
@@ -114,12 +109,38 @@ class CSIR():
                 document = doc[1]                           # document is the abstract text.
                 concepts = self.ExtractConceptsFromDoc(document,db,terminology,MaxMatcher)
                 if len(concepts)>0:
-                    concept_list = ''
-                    for c in concepts:
-                        concept_list += c +","
+                    concept_list = ','.join(concepts)
                     print concept_list
+                    if terminology == 'go':
+                        self.AddGeneOntologyConceptPredecessors(doc[0],concepts)
                     query = "UPDATE doc SET "+ terminology +"='"+concept_list+"' WHERE PMID='"+doc[0]+"';"
                     db.Query(query)
+    def QueryConceptExtraction(self,query):
+        db = DB()        
+        param = Parameter()
+        # Extract Docs from DB
+        N = param.GetDocNumber()
+        collection = db.Execute('select PMID, AB  from doc limit {0};'.format(N))
+        print "len(collection) ",len(collection)
+        terminology_list = ["go","mesh","icd10","snomed"]
+        conceptList = []
+        for terminology in terminology_list:
+            MaxMatcher = dict()
+            for doc in collection:                          # For every single document do the Indexing
+                print doc
+                print "len(MaxMatcher) is ",len(MaxMatcher)                         # document is the abstract text.
+                concepts = self.ExtractConceptsFromDoc(query,db,terminology,MaxMatcher)
+                for concept in concepts:
+                    conceptList.append(concept)
+        return ' , '.join(conceptList)
+    def AddGeneOntologyConceptPredecessors(self,doc,conceptList):
+        predecessors = []
+        for concept in conceptList:
+            predecessors.append(GO.GetPredecessors(concept))
+        query = "UPDATE doc SET GOChildNodes ='{0}' WHERE PMID='{1}';".format(' , '.join(predecessors),doc[0])
+        CSIR.db.Query(query)
+        
+    
     def DocumentExpantion(self):
         '''
         BM25TermWeightingModel
@@ -220,6 +241,7 @@ class CSIR():
         b = 1 # from 0.25 to 2.00 increase 0.25
         #Q = raw_input("Enter the query:")
         Q = tp.Tokenize('Describe the procedure or methods for how to "open up" a cell through a process called "electroporation."')
+        Q = self.QueryConceptExtraction(Q)
         Q = tp.EliminateStopWords(Q)
         Q = tp.Stem(Q)
         Q = self.ExpandQuery(Q)

@@ -1,7 +1,7 @@
 from IR import CSIR
 csir = CSIR()
-#csir.StoreDocumentsInDatabase()
+#csir.PrepareDocuments()
 #csir.PrepareTerminologies()
-csir.DocumentExtractTerminologyConcepts()
+#csir.ConceptExtraction()
 #csir.DocumentExpantion()
-#csir.DocumentRetrieval()
+csir.DocumentRetrieval()

@@ -11,9 +11,9 @@ import re
 import nltk
 class DB:
     def __init__(self):
-        self.conn = mdb.connect('localhost', 'root', 'Dellnya', 'ir')
+        self.conn = mdb.connect('localhost', 'root', '', 'ir')
         self.con = None
-        self.con = _mysql.connect('localhost', 'root', 'Dellnya', 'ir')
+        self.con = _mysql.connect('localhost', 'root', '', 'ir')
         self.cur = self.conn.cursor()
     def Query(self,query):
         return self.con.query(query)
@@ -22,6 +22,13 @@ class DB:
         rows = self.cur.fetchall()
         return rows
     def Insert(self,query):
+        x = self.conn.cursor()
+        try:
+            x.execute(query)
+            self.conn.commit()
+        except:
+            self.conn.rollback()
+    def Update(self,query):
         x = self.conn.cursor()
         try:
             x.execute(query)
@@ -92,6 +99,7 @@ class TextProcessor:
         PMID = PMID.replace('\n','')
         PMID = PMID.replace('\r','')
         PMID = PMID.replace(' ','')
+        PMID = PMID.replace("PMID-",'')
         return PMID
     def CleanSpace(self,text):
         while text.find('  ') != -1:
@@ -146,6 +154,6 @@ class Operation:
         return list(set(a) | set(b))
 class Parameter:
     def GetDocNumber(self):
-        return 500000
+        return 500
     def GetDocNumberForLocalContext(self):
         return 5
