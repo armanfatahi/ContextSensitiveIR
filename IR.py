@@ -1,148 +1,105 @@
-from Ontology import GO,MeSH,ICD10,SNOMED,Ontology
-from Utility import DB
-from Utility import TextProcessor,Operation,Parameter
+import sys
+from output import Display
+from models import Document, Collection, Query, DB, GO, MeSH, ICD10, SNOMED, Ontology
+from utilities import TextProcessor,Operation,Parameter, GlobalVariables
 from sets import Set
 from math import log10,log
-from nltk.tokenize import word_tokenize
-class CSIR():
-    db = DB()
-    def __init__(self):
-        print "Good Luck with your IR!"
 
-    def PrepareTerminologies(self):
-        print "Preparing terminologies..."
-        g = GO() # Gene Ontology Extraction
-        g.ExtractTerms()
-        g.MaxMatcher('go')
-        print "Gene Ontology is hot to go!"
-        g = MeSH() # Medical Subjects Headings Extraction
-        g.ExtractTerms()
-        g.MaxMatcher('mesh')
-        print "Medical Subject Headings is hot to go!"
-        g = ICD10() # International Statistical Classification of Diseases Extraction
-        g.ExtractTerms()
-        g.MaxMatcher('icd10')
-        print "International Statistical Classification of Diseases is hot to go!"
-        g = SNOMED() # Systematized Nomenclature of Medicine Extraction
-        g.ExtractTerms()
-        g.MaxMatcher("snomed")
-        print "Systematized Nomenclature of Medicine is hot to go!"
-        # Store all concepts into MaxMatcher Table.
-        g = Ontology()
-        g.CreateTerminologies()
-        g.CreateMaxMatcher()
-        print "Preparing terminologies and MaxMatcher Done."
-    def PrepareDocuments(self):
-        print "Storing Documents in Database Started..."
+
+class IR():
+    title = "Informaion retrieval"
+    def __init__(self):
+        print "Good Luck with your ",self.title
+    
+
+class OntologyBasedIR(IR):
+    title = "Context Sensitive"
+    db = DB()
+    go = GO()
+    
+    def _experiment(self,remove_stop_words,global_context_activated,ontology_based_IR_activated,add_concepts_multiple_times):
+        GlobalVariables.remove_stop_words = remove_stop_words
+        GlobalVariables.global_context_activated = global_context_activated
+        GlobalVariables.ontology_based_IR_activated = ontology_based_IR_activated
+        GlobalVariables.add_concepts_multiple_times = add_concepts_multiple_times
+        GlobalVariables.adding_concept_times = 5
+        GlobalVariables.result_title = "exp"
+        if GlobalVariables.remove_stop_words:
+            GlobalVariables.result_title += "_t"
+        else:
+            GlobalVariables.result_title += "_f"
+        if GlobalVariables.global_context_activated:
+            GlobalVariables.result_title += "_t"
+        else:
+            GlobalVariables.result_title += "_f"
+        if GlobalVariables.ontology_based_IR_activated:
+            GlobalVariables.result_title += "_t"
+        else:
+            GlobalVariables.result_title += "_f"
+        if GlobalVariables.add_concepts_multiple_times:
+            GlobalVariables.result_title += "_t"
+        else:
+            GlobalVariables.result_title += "_f"
+        for i in range(50):
+            print "Query: ",100+i
+            #self.retrive_documents(100+i)
+        
+        Display._extract_percision_recall(GlobalVariables.result_title)
+        Display._combine_Percision_recal(GlobalVariables.result_title)
+    def __init__(self):
+        print "Good Luck with your Context Sensitive IR!" 
+    
+    def extract_concepts(self):
+        '''
+        Concepts are extracted from each document.
+        for the extracted concepts, Predecessors are extracted.
+        We need to keep 'Already Extracted' List of 
+        Go concepts so that we avoid extracting them again
+        
+        OR
+        
+        we use a try except when we are inserting the concept to avoid duplicate!
+        we well pay the cost of duplicate extraction though!
+        '''
         db = DB()
-        param = Parameter()
-        db.Query('delete from doc;') # Make sure the table is empty
-        tp = TextProcessor()
-        f = open(r'd:\Project\TREC\2004\2004_TREC_ASCII_MEDLINE_1')
-        doc = ''
-        PMID = f.readline()
-        AB = ''
-        ABBegins = False # Abstract Begins
-        QueryList = ''   # To make queries faster, First we collect a banch of them
-        QueryCount = 0
-        QueryDone = 0
-        QueryLimit = 49
-        N = param.GetDocNumber()
-        DocCount = 0
-        while True:
-            # Every Abstract begins with "AB  -" this is how we find them
-            line = f.readline()
-            if line.find('PMID-') == -1:
-                doc += line
-                if line.find('AB  -') != -1:
-                    ABBegins = True
-                    line = line.replace("AB  -",'    ')                    
-                if line.find('    ')!= -1:
-                    if ABBegins:
-                        while line.find('  ') != -1:
-                            line = line.replace('  ',' ')
-                        line = line.replace('\r\n',' ')
-                        line = line.replace('\r',' ')
-                        line = line.replace('\n',' ')
-                        AB += line
-            else:
-                doc = tp.CleanDoc(doc)
-                AB = tp.RemoveStopWords(AB) #We store not original data.
-                AB = tp.CleanDoc(AB) # to remove ' and  " so that SQL query has no problem
-                PMID = tp.CleanPMID(PMID)
-                query = r"('" + PMID + "','" + doc+ "','" + AB + "'),"
-                if AB != '':
-                    QueryList += query
-                    QueryCount += 1
-                    DocCount +=1
-                    if QueryCount > QueryLimit:
-                        QueryList = QueryList[:-1]
-                        QueryList = 'Insert into doc(PMID,content,AB) values ' + QueryList
-                        db.Query(QueryList)
-                        QueryCount = 0
-                        QueryList = ''
-                        QueryDone += QueryLimit+1
-                        print QueryDone," documents stored."
-                    PMID = line
-                    doc = ''
-                    AB = ''
-                    ABBegins = False
-                if DocCount > N:
-                    break
-        QueryList = QueryList[:-1]
-        QueryList = 'Insert into doc(PMID,content,AB) values ' + QueryList 
-        db.Query(QueryList)
-        print "Preparing Documents is Done!"
-    def ConceptExtraction(self):
-        db = DB()        
-        param = Parameter()
-        # Extract Docs from DB
-        N = param.GetDocNumber()
-        collection = db.Execute('select PMID, AB  from doc limit {0};'.format(N))
-        print "len(collection) ",len(collection)
-        terminology_list = ["go","mesh","icd10","snomed"]
+        Collection._load()
+        terminology_list = ["go"]#,"mesh","icd10","snomed"]
+        extracted_doc = 0
         for terminology in terminology_list:
             MaxMatcher = dict()
-            for doc in collection:                          # For every single document do the Indexing
-                print doc
-                print "len(MaxMatcher) is ",len(MaxMatcher)
-                document = doc[1]                           # document is the abstract text.
-                concepts = self.ExtractConceptsFromDoc(document,db,terminology,MaxMatcher)
+            for doc in Collection._documents:  
+                extracted_doc += 1
+                print "extracted_doc: ",extracted_doc , ' id:', doc.PMID
+                document = doc.abstract                           # document is the abstract text.
+                concepts = self._extract_concepts(document,terminology,MaxMatcher)
                 if len(concepts)>0:
-                    concept_list = ','.join(concepts)
-                    print concept_list
+                    concept_id_list = ','.join(concepts)
                     if terminology == 'go':
-                        self.AddGeneOntologyConceptPredecessors(doc[0],concepts)
-                    query = "UPDATE doc SET "+ terminology +"='"+concept_list+"' WHERE PMID='"+doc[0]+"';"
-                    db.Query(query)
-    def QueryConceptExtraction(self,query):
-        db = DB()        
-        param = Parameter()
-        # Extract Docs from DB
-        N = param.GetDocNumber()
-        collection = db.Execute('select PMID, AB  from doc limit {0};'.format(N))
-        print "len(collection) ",len(collection)
-        terminology_list = ["go","mesh","icd10","snomed"]
-        conceptList = []
-        for terminology in terminology_list:
-            MaxMatcher = dict()
-            for doc in collection:                          # For every single document do the Indexing
-                print doc
-                print "len(MaxMatcher) is ",len(MaxMatcher)                         # document is the abstract text.
-                concepts = self.ExtractConceptsFromDoc(query,db,terminology,MaxMatcher)
-                for concept in concepts:
-                    conceptList.append(concept)
-        return ' , '.join(conceptList)
+                        self.AddGeneOntologyConceptPredecessors(doc.PMID,concepts)
+                    query = "Insert into collection_go(PMID,go_id_list) values ('"+doc.PMID+"',' "+concept_id_list+"');"
+                    try:
+                        print query
+                        db.Query(query)
+                    except:
+                        print ""#"Unexpected error:", sys.exc_info()[0]
+
     def AddGeneOntologyConceptPredecessors(self,doc,conceptList):
+        """ 
+        concept list is a list of GO ids
+        """
         predecessors = []
         for concept in conceptList:
             predecessors.append(GO.GetPredecessors(concept))
-        query = "UPDATE doc SET GOChildNodes ='{0}' WHERE PMID='{1}';".format(' , '.join(predecessors),doc[0])
-        CSIR.db.Query(query)
-        
-    
+        query = "Insert into collection_go_predecessors(PMID,Predecessors) values ('{0}','{1}')".format(doc,' , '.join(predecessors))
+        try:
+            OntologyBasedIR.db.Query(query)
+        except:
+            print "Unexpected error:", sys.exc_info()[0]
+
     def DocumentExpantion(self):
         '''
+        db.Query("delete from collection_concepts;")!!!
+        
         BM25TermWeightingModel
         BM25 or Best Match algorithm, calculates the weight of 
         each word in each extracted concept for the document 
@@ -150,112 +107,157 @@ class CSIR():
         print "Calculating weights is started..."
         wieght_threshold = 0.10
         tp = TextProcessor()
-        param = Parameter()
         ontology = Ontology()
         db = DB()
-        N = param.GetDocNumber()              #Number of documents in the collection
-        collection = db.Execute("select PMID, AB, GO, MeSH, ICD10, SNOMED from doc limit {0}".format(N))
+        db.Query("delete from collection_concepts;")
+        Collection._load()
+        Collection._load_go()
+        N = Collection._count
         #Terminologies are ('go','mesh','icd10','snomed') corresponding with columns 2,3,4,5
-        T = ontology.GetDict('T')    #bring all ontologies into the memory to be faster!
+        T = ontology.GetDict('go')    #bring all ontologies into the memory to be faster!
         doc_avg_len = 122
         k1 = 1.2 
         b = 1.00
-        doc_counter = 0                        # tuning parameters!
-        f = open(r"D:\Project\temp\output.txt",'w')
-        for doc in collection:
+        doc_counter = 0   
+        print Collection._count                     # tuning parameters!
+        for d in Collection._documents:
             doc_counter += 1
-            f.write("\r\n" + str(doc) + "\r\n")
-            doc_len = len(doc)
+            doc_len = d.length
             weight = dict()
-            for i in range(2,6):
-                Concepts = []
-                if doc[i]:
-                    Concepts = doc[i].split(tp.Splitter()) #Getting the list of Concepts for terminology T
-                tp.remove_values_from_list(Concepts, '')
-                tp.remove_values_from_list(Concepts, ' ')
-                for C in Concepts:
-                    # Extract concept variants for C
-                    var = ' '
-                    for variant in T[C]:
-                        var += ' {0} '.format(variant)
-                    terms = set( var.split(tp.WordSplitter()))
-                    tp.remove_values_from_list(terms,'')
-                    l = len(terms)    
-                    sumation = 0  
-                    for term in terms:
-                        term_weight = 0
-                        #calculate the weight
-                        tf = self.TermFrequency(doc[1],term)                     
-                        #Here goes calculating the weight
-                        n_k = self.InverseDocumentFrequency(collection,term)
-                        tf = self.TermFrequency(doc[1], term)
+            for C in d.go:
+                C = C.replace(' ','')
+                # Extract concept variants for C
+                var = ' '
+                for variant in T[C]:
+                    var += ' {0} '.format(variant)
+                terms = set( var.split(tp.WordSplitter()))
+                tp.remove_values_from_list(terms,'')
+                l = len(terms)    
+                sumation = 0  
+                for term in terms:
+                    term_weight = 0
+                    #calculate the weight
+                    tf = d.get_frequency(term)                     
+                    #Here goes calculating the weight
+                    n_k = Collection._get_frequency(term)
+                    tf = d.get_frequency(term)
+                    try:
                         term_weight = tf * (( log10((N-n_k+0.50)/(n_k+0.50)) )/(k1+((1-b)+b) * (doc_len/doc_avg_len)+(tf))) 
-                        sumation += term_weight
-                    if (sumation/l) > wieght_threshold:
-                        weight[C] = (1.00/l) * sumation
-                # Store concepts and weights in the database, concepts and their weights are semi-colon separated
+                    except:
+                        pass
+                        #print "One here!++++++++++++++++++++++++++++++++++"
+                    sumation += term_weight
+                if (sumation/l) > wieght_threshold:
+                    weight[C] = (1.00/l) * sumation
+            # Store concepts and weights in the database, concepts and their weights are semi-colon separated
             values = ''
             ConceptList = []
             for row in weight:
+                row = row.replace(" ",'')
                 for term in T[row]:
                     ConceptList.append(term)
                 if values == '':
                     values = str(row) + ';' + str(weight[row])
                 else:
                     values += ',' + str(row) + ';' + str(weight[row])
-                f.write(str(weight[row]) + ' ' + row + '---> ' + ' , '.join(ConceptList) + "\n")
-            self.ExpandDocument(doc[0], ConceptList)
-            query = 'UPDATE doc SET Concepts = "{0}" where PMID = \'{1}\' '.format(values,doc[0])
+            d.set_tag(ConceptList)   #Adding tag tags to documents
+            query = 'Insert into collection_concepts (PMID, Concepts) values({0}, "{1}")'.format(d.PMID,values)
+            #print query
             db.Query(query)
-            f.write("\r\nPMID: " + str(doc[0]) + "\r\n")
-        f.close()
-        print "Calculating weights is Done!"
+        print "Calculating weights is Done! Concepts are added to Database"
     def Indexing(self):
         '''
         IR Indexing Operations
             - Elimination of Stopwords
             - 
         '''
+        DB._execute("DELETE from collection_index")
         print "Indexing is started..."
-        tp = TextProcessor()
-        param = Parameter()
-        db = DB()
-        N = param.GetDocNumber()              #Number of documents in the collection
-        collection = db.Execute("select PMID, CONCAT(AB,' ',Tag) from doc limit {0}".format(N))
-        for doc in collection:
-            IndexList = tp.Tokenize(doc[1])
-            IndexList = tp.EliminateStopWords(IndexList)
-            IndexList = tp.Stem(IndexList)
-            print IndexList
-            self.AddDocumentIndex(doc[0],IndexList)
+        tp = TextProcessor() 
+        Collection._load()
+        Collection._load_tags() #loading document with PMID, tags and abstracts
+        for doc in Collection._documents:
+            index_list = []
+            for term in doc.abstract:
+                index_list.append(term)
+            if GlobalVariables.global_context_activated:
+                for term in doc.tag:
+                    index_list.append(term)
+            index_list = tp.EliminateStopWords(index_list)
+            index_list = tp.Stem(index_list)
+            doc.set_index(index_list)
         print "Indexing is Done!"       
 
-    def DocumentRetrieval(self):
-        tp = TextProcessor()
-        param = Parameter()
-        db = DB()
-        N = param.GetDocNumber()
+    def retrive_documents(self,query_id):
         k1 = 1.2
         k3 = 8.00
         avg_dl = 122
         b = 1 # from 0.25 to 2.00 increase 0.25
-        #Q = raw_input("Enter the query:")
-        Q = tp.Tokenize('Describe the procedure or methods for how to "open up" a cell through a process called "electroporation."')
-        Q = self.QueryConceptExtraction(Q)
-        Q = tp.EliminateStopWords(Q)
-        Q = tp.Stem(Q)
-        Q = self.ExpandQuery(Q)
-        print Q
-        C = db.Execute('select PMID, Idx  from doc limit {0};'.format(N))
+        q = Query(query_id)
+        #q.set_concepts(self.QueryConceptExtraction(q.text))
+        self._expand_query(q)
+        return
+        print "Retrieving Documents for: ", q.text
+        Collection._load()
+        Collection._load_go()
+        Collection._load_tags()
+        Collection._load_indexes()      #Loads documents into _documents with PMID and Index
         score = dict()
-        for D in C:
+        N = Collection._count
+        Nt = dict()
+        for term in q.text:
+            Nt[term] = Collection._get_frequency(term)
+        counter = 0
+        for doc in Collection._documents:
             summation = 0;
-            dl = len(D) * 1.00
-            for t in Q:
-                Nt = self.InverseDocumentFrequency(C, t)
-                tfn = self.TermFrequency(D[1], t)
-                QQ = ' '.join(Q)
-                qtf = self.TermFrequency(QQ, t)
+            dl = doc.length * 1.00
+            for t in q.text:
+                tfn = doc.get_frequency(t)
+                QQ = ' '.join(q.text)
+                qtf = Document._term_frequency(QQ, t)
+                K = k1*((1-b)+b*(dl/avg_dl))
+                w = log((N-Nt[t]+0.5)/(Nt[t]+0.5),2)
+                if w<0:
+                    #this makes the result a negative number
+                    # if we break the result will be bigger than or equal to zero
+                    break
+                p1 = (((k1+1)*tfn)/(K+tfn))
+                p2 = ((k3+1)*qtf/(k3+qtf))
+                p3 = w
+                summation += p1*p2*p3
+            score[doc.PMID] = summation
+            counter += 1
+            
+        #Display.plot(score, q)
+    def QueryConceptExtraction(self,query):
+        terminology_list = ["go"]# ,"mesh","icd10","snomed"]
+        conceptList = []
+        for terminology in terminology_list:
+            MaxMatcher = dict()
+            #for doc in collection:                          # For every single document do the Indexing
+            #print doc
+            #print "len(MaxMatcher) is ",len(MaxMatcher)                         # document is the abstract text.
+            concepts = OntologyBasedIR._extract_concepts(query,terminology,MaxMatcher)
+            for concept in concepts:
+                conceptList.append(concept)
+    def _expand_query(self,q):
+        #--STEP 1----------Extract TOP DOCUMENTS ----------------------------
+        tp = TextProcessor()
+        param = Parameter()
+        k1      = 1.2
+        k3      = 8.00
+        avg_dl  = 122
+        b       = 1                     # from 0.25 to 2.00 increase 0.25    
+        Collection._load_indexes()      # Loads indexes into _documents
+        N = len(Collection._documents)
+        score = dict()
+        for D in Collection._documents:
+            summation = 0;
+            dl = D.length * 1.00
+            for t in q.text:
+                Nt = Collection._get_frequency(t)
+                tfn = D.get_frequency(t)
+                qtf = q.get_frequency(t)
                 K = k1*((1-b)+b*(dl/avg_dl))
                 w = log((N-Nt+0.5)/(Nt+0.5),2)
                 if w<0:
@@ -266,17 +268,16 @@ class CSIR():
                 p2 = ((k3+1)*qtf/(k3+qtf))
                 p3 = w
                 summation += p1*p2*p3
-            score[D] = summation
-            #if score[D] > 0:
-            #    print score[D], D
-        print "Here we go"
-        #for D in score.iterkeys():
-        #    if score[D] >0:
-        #        print D[0], "---->", score[D]
-        # Find Top ranked Documents
+                
+            score[D.PMID] = summation
         M = param.GetDocNumberForLocalContext()
         TopDocs = []
         TopNums = []
+        new_score = dict()
+        for item in score.iterkeys():
+            if score[item] > 0:
+                new_score[item] = score[item]
+        
         for i in range(M):
             TopNums.append(0)
             TopDocs.append('')
@@ -289,99 +290,38 @@ class CSIR():
                     TopDocs[i] = D
                     TopNums[i] = score[D]
                     break
-        TopDocsTexts = ''
-        for doc in TopDocs:
-            TopDocsTexts += " "+ doc[1]
+        Display._plot(new_score, q)
+        Display._export_to_database(new_score,q,GlobalVariables.result_title)
+        return
+        TopDocsTexts = ''        
         TopDocsTexts = tp.Tokenize(TopDocsTexts)
-        #----------------Calculate weight of each term which is a member of new query----------------------------
-        for doc in TopDocs:
-            print doc[0]
-    def ExpandQuery(self,Q):
-        tp = TextProcessor()
-        param = Parameter()
-        db = DB()
-        N = param.GetDocNumber()
-        k1 = 1.2
-        k3 = 8.00
-        avg_dl = 122
-        b = 1 # from 0.25 to 2.00 increase 0.25
-        #Q = raw_input("Enter the query:")
-        print Q
-        C = db.Execute('select PMID, Idx  from doc limit {0};'.format(N))
-        score = dict()
-        for D in C:
-            summation = 0;
-            dl = len(D) * 1.00
-            for t in Q:
-                Nt = self.InverseDocumentFrequency(C, t)
-                tfn = self.TermFrequency(D[1], t)
-                QQ = ' '.join(Q)
-                qtf = self.TermFrequency(QQ, t)
-                K = k1*((1-b)+b*(dl/avg_dl))
-                w = log((N-Nt+0.5)/(Nt+0.5),2)
-                if w<0:
-                    #this makes the result a negative number
-                    # if we break the result will be bigger than or equal to zero
-                    break
-                p1 = (((k1+1)*tfn)/(K+tfn))
-                p2 = ((k3+1)*qtf/(k3+qtf))
-                p3 = w
-                summation += p1*p2*p3
-            score[D] = summation
-            #if score[D] > 0:
-            #    print score[D], D
-        print "Here we go"
-        #for D in score.iterkeys():
-        #    if score[D] >0:
-        #        print D[0], "---->", score[D]
-        # Find Top ranked Documents
-        M = param.GetDocNumberForLocalContext()
-        TopDocs = []
-        TopNums = []
-        for i in range(M):
-            TopNums.append(0)
-            TopDocs.append('')
-        for D in score.iterkeys():
-            for i in range(M):
-                if score[D] > TopNums[i]:
-                    for j in range(M-i-1):
-                        TopDocs[M-j-1] = TopDocs[M-j-2]
-                        TopNums[M-j-1] = TopNums[M-j-2]
-                    TopDocs[i] = D
-                    TopNums[i] = score[D]
-                    break
-        TopDocsTexts = ''
-        for doc in TopDocs:
-            TopDocsTexts += " "+ doc[1]
-        TopDocsTexts = tp.Tokenize(TopDocsTexts)
-        #----------------Calculate weight of each term which is a member of new query----------------------------
-        N = N
-        C = C
+        TopDocsTexts = TextProcessor._remove_stop_words(TopDocsTexts)
+        #---STEP 2---------Calculate weight of each term which is a member of new query----------------------------
         K = TopDocsTexts
         Beta = 0.4
         weight = dict()
-        MaxTFQ = 0
+        MaxTFQ = 0.001
         for term in TopDocsTexts:
-            tfq = self.TermFrequency(' '.join(Q), term)
+            tfq = q.get_frequency(term)
             if tfq > MaxTFQ:
                 MaxTFQ = tfq
         tfqN = 0
         MaxInfo = 0
         for term in TopDocsTexts:
-            Lambda = self.TermFrequency(' '.join(K), term)
-            Freq_t_k = self.TermFrequency(' '.join(K), term)
+            Lambda = Document._term_frequency(' '.join(K), term)
+            Freq_t_k = Document._term_frequency(' '.join(K), term)
             log1 = log(1.00/(1.00+Lambda),2)
             log2 = log(Lambda/(1.00+Lambda),2)
             InfoBO1 = -log1 - Freq_t_k * log2
             if InfoBO1 > MaxInfo:
                 MaxInfo = InfoBO1
         for term in TopDocsTexts:
-            Lambda = self.TermFrequency(' '.join(K), term)
-            Freq_t_k = self.TermFrequency(' '.join(K), term)
+            Lambda = Document._term_frequency(' '.join(K), term)
+            Freq_t_k = Document._term_frequency(' '.join(K), term)
             log1 = log(1.00/(1.00+Lambda),2)
             log2 = log(Lambda/(1.00+Lambda),2)
             InfoBO1 = -log1 - Freq_t_k * log2
-            tfq = self.TermFrequency(' '.join(Q), term)
+            tfq = q.get_frequency(term)
             tfqN = (tfq +0.00) /MaxTFQ
             if MaxInfo >0 :
                 weight[term] = tfqN + Beta*(InfoBO1/MaxInfo)
@@ -391,21 +331,28 @@ class CSIR():
         for term in weight.iterkeys():
             if weight[term] > 0.25:
                 QPrime.append(term)
-                print term, "-->", weight[term]
         return  QPrime
-
-    def ExtractConceptsFromDoc(self,document,db,terminology,MaxMatcher):
+    @staticmethod
+    def _extract_concepts(document,terminology,MaxMatcher):
+        """
+        document:
+        db:
+        terminology:
+        MaxMatcher:
+        
+        returns:
+                Concept List
+        """
         # Set threshold 
         op = Operation()
         threshold = 0.95
-        doc_token = [t for t in word_tokenize(document)]    #[word_tokenize(t) for t in sent_tokenize(document)]
-        print "len(doc_token) " , len(doc_token)
+        doc_token = document
+        #print "len(doc_token) " , len(doc_token)
         candidate_concepts = []
-        
         #Prepare a dictionary for MaxMatcher result of tokens.
         for token_row in doc_token:
             if token_row not in MaxMatcher.keys():
-                extracted_concepts = db.Execute("select cid, sig from "+ terminology +"_mm where word = '" + token_row + "'")
+                extracted_concepts = DB._execute("select cid, sig from "+ terminology +"_mm where word = '" + token_row + "'")
                 MaxMatcher[token_row] = extracted_concepts
         for current_token_counter in range(len(doc_token)-3): #skip the last 3 token
             current_token = doc_token[current_token_counter]
@@ -439,36 +386,421 @@ class CSIR():
                 else:
                     break
             candidate_concepts = op.union( candidate_concepts , [c for c in current_token_concepts if current_token_score[c]>threshold])
-        print "-----------------------------------------------"
-        print document
-        print candidate_concepts
-        print "-----------------------------------------------"
         return candidate_concepts
-    def TermFrequency(self,doc,term):
-        tp = TextProcessor() 
-        doc_tokens = doc.split(tp.WordSplitter())
-        result = doc_tokens.count(term)
-        return result
-    def InverseDocumentFrequency(self,docs,term):
+class ContextSensitiveIR(IR):
+    title = "Context Sensitive"
+    db = DB()
+    go = GO()
+    def __init__(self):
+        print "Good Luck with your Context Sensitive IR!" 
+    
+    def extract_concepts(self):
+        '''
+        Concepts are extracted from each document.
+        for the extracted concepts, Predecessors are extracted.
+        We need to keep 'Already Extracted' List of 
+        Go concepts so that we avoid extracting them again
+        
+        OR
+        
+        we use a try except when we are inserting the concept to avoid duplicate!
+        we well pay the cost of duplicate extraction though!
+        '''
+        db = DB()
+        Collection._load()
+        terminology_list = ["go"]#,"mesh","icd10","snomed"]
+        extracted_doc = 0
+        for terminology in terminology_list:
+            MaxMatcher = dict()
+            for doc in Collection._documents:  
+                extracted_doc += 1
+                print "extracted_doc: ",extracted_doc , ' id:', doc.PMID
+                document = doc.abstract                           # document is the abstract text.
+                concepts = self._extract_concepts(document,terminology,MaxMatcher)
+                if len(concepts)>0:
+                    concept_id_list = ','.join(concepts)
+                    if terminology == 'go':
+                        self.AddGeneOntologyConceptPredecessors(doc.PMID,concepts)
+                    query = "Insert into collection_go(PMID,go_id_list) values ('"+doc.PMID+"',' "+concept_id_list+"');"
+                    try:
+                        print query
+                        db.Query(query)
+                    except:
+                        print ""#"Unexpected error:", sys.exc_info()[0]
+
+    def AddGeneOntologyConceptPredecessors(self,doc,conceptList):
+        """ 
+        concept list is a list of GO ids
+        """
+        predecessors = []
+        for concept in conceptList:
+            predecessors.append(GO.GetPredecessors(concept))
+        query = "Insert into collection_go_predecessors(PMID,Predecessors) values ('{0}','{1}')".format(doc,' , '.join(predecessors))
+        try:
+            ContextSensitiveIR.db.Query(query)
+        except:
+            print "Unexpected error:", sys.exc_info()[0]
+        
+        
+    
+    def DocumentExpantion(self):
+        '''
+        db.Query("delete from collection_concepts;")!!!
+        
+        BM25TermWeightingModel
+        BM25 or Best Match algorithm, calculates the weight of 
+        each word in each extracted concept for the document 
+        '''
+        print "Calculating weights is started..."
+        wieght_threshold = 0.10
         tp = TextProcessor()
-        count = 0       
-        for doc in docs:
-            print doc
-            doc_tokens = doc[1].split(tp.WordSplitter())
-            if doc_tokens.count(term) > 0:
-                count += 1
-        return count
-    def FindWordInDocument(self,document,word):
-        doc_list = document.split(' ')
-        for term in doc_list:
-            if term == word:
-                return True
-        return False
-    def ExpandDocument(self,PMID,ConceptList):
+        ontology = Ontology()
         db = DB()
-        query = 'update doc set Tag = "{0}" where PMID = "{1}"'.format(' , '.join(ConceptList),PMID)
-        db.Query(query)
-    def AddDocumentIndex(self,PMID,IndexList):
-        db = DB()
-        query = 'update doc set Idx = "{0}" where PMID = "{1}"'.format(' '.join(IndexList),PMID)
-        db.Query(query)
+        db.Query("delete from collection_concepts;")
+        Collection._load()
+        Collection._load_go()
+        N = Collection._count
+        #Terminologies are ('go','mesh','icd10','snomed') corresponding with columns 2,3,4,5
+        T = ontology.GetDict('go')    #bring all ontologies into the memory to be faster!
+        doc_avg_len = 122
+        k1 = 1.2 
+        b = 1.00
+        doc_counter = 0   
+        print Collection._count                     # tuning parameters!
+        for d in Collection._documents:
+            doc_counter += 1
+            doc_len = d.length
+            weight = dict()
+            for C in d.go:
+                C = C.replace(' ','')
+                # Extract concept variants for C
+                var = ' '
+                for variant in T[C]:
+                    var += ' {0} '.format(variant)
+                terms = set( var.split(tp.WordSplitter()))
+                tp.remove_values_from_list(terms,'')
+                l = len(terms)    
+                sumation = 0  
+                for term in terms:
+                    term_weight = 0
+                    #calculate the weight
+                    tf = d.get_frequency(term)                     
+                    #Here goes calculating the weight
+                    n_k = Collection._get_frequency(term)
+                    tf = d.get_frequency(term)
+                    try:
+                        term_weight = tf * (( log10((N-n_k+0.50)/(n_k+0.50)) )/(k1+((1-b)+b) * (doc_len/doc_avg_len)+(tf))) 
+                    except:
+                        pass
+                        #print "One here!++++++++++++++++++++++++++++++++++"
+                    sumation += term_weight
+                if (sumation/l) > wieght_threshold:
+                    weight[C] = (1.00/l) * sumation
+            # Store concepts and weights in the database, concepts and their weights are semi-colon separated
+            values = ''
+            ConceptList = []
+            for row in weight:
+                row = row.replace(" ",'')
+                for term in T[row]:
+                    ConceptList.append(term)
+                if values == '':
+                    values = str(row) + ';' + str(weight[row])
+                else:
+                    values += ',' + str(row) + ';' + str(weight[row])
+            d.set_tag(ConceptList)   #Adding tag tags to documents
+            query = 'Insert into collection_concepts (PMID, Concepts) values({0}, "{1}")'.format(d.PMID,values)
+            #print query
+            db.Query(query)
+        print "Calculating weights is Done! Concepts are added to Database"
+    def Indexing(self):
+        '''
+        IR Indexing Operations
+            - Elimination of Stopwords
+            - 
+        '''
+        DB._execute("DELETE from collection_index")
+        print "Indexing is started..."
+        tp = TextProcessor() 
+        Collection._load()
+        Collection._load_tags() #loading document with PMID, tags and abstracts
+        for doc in Collection._documents:
+            index_list = []
+            for term in doc.abstract:
+                index_list.append(term)
+            if GlobalVariables.global_context_activated:
+                for term in doc.tag:
+                    index_list.append(term)
+            index_list = tp.EliminateStopWords(index_list)
+            index_list = tp.Stem(index_list)
+            doc.set_index(index_list)
+        print "Indexing is Done!"       
+
+    def retrive_documents(self,query_id):
+        k1 = 1.2
+        k3 = 8.00
+        avg_dl = 122
+        b = 1 # from 0.25 to 2.00 increase 0.25
+        q = Query(query_id)
+        #q.set_concepts(self.QueryConceptExtraction(q.text))
+        self._expand_query(q)
+        return
+        print "Retrieving Documents for: ", q.text
+        Collection._load()
+        Collection._load_go()
+        Collection._load_tags()
+        Collection._load_indexes()      #Loads documents into _documents with PMID and Index
+        score = dict()
+        N = Collection._count
+        Nt = dict()
+        for term in q.text:
+            Nt[term] = Collection._get_frequency(term)
+        counter = 0
+        for doc in Collection._documents:
+            summation = 0;
+            dl = doc.length * 1.00
+            for t in q.text:
+                tfn = doc.get_frequency(t)
+                QQ = ' '.join(q.text)
+                qtf = Document._term_frequency(QQ, t)
+                K = k1*((1-b)+b*(dl/avg_dl))
+                w = log((N-Nt[t]+0.5)/(Nt[t]+0.5),2)
+                if w<0:
+                    #this makes the result a negative number
+                    # if we break the result will be bigger than or equal to zero
+                    break
+                p1 = (((k1+1)*tfn)/(K+tfn))
+                p2 = ((k3+1)*qtf/(k3+qtf))
+                p3 = w
+                summation += p1*p2*p3
+            score[doc.PMID] = summation
+            counter += 1
+            
+        #Display.plot(score, q)
+    def QueryConceptExtraction(self,query):
+        terminology_list = ["go"]# ,"mesh","icd10","snomed"]
+        conceptList = []
+        for terminology in terminology_list:
+            MaxMatcher = dict()
+            #for doc in collection:                          # For every single document do the Indexing
+            #print doc
+            #print "len(MaxMatcher) is ",len(MaxMatcher)                         # document is the abstract text.
+            concepts = ContextSensitiveIR._extract_concepts(query,terminology,MaxMatcher)
+            for concept in concepts:
+                conceptList.append(concept)
+    def _expand_query(self,q):
+        #--STEP 1----------Extract TOP DOCUMENTS ----------------------------
+        tp = TextProcessor()
+        param = Parameter()
+        k1      = 1.2
+        k3      = 8.00
+        avg_dl  = 122
+        b       = 1                     # from 0.25 to 2.00 increase 0.25    
+        Collection._load_indexes()      # Loads indexes into _documents
+        N = len(Collection._documents)
+        score = dict()
+        for D in Collection._documents:
+            summation = 0;
+            dl = D.length * 1.00
+            for t in q.text:
+                Nt = Collection._get_frequency(t)
+                tfn = D.get_frequency(t)
+                qtf = q.get_frequency(t)
+                K = k1*((1-b)+b*(dl/avg_dl))
+                w = log((N-Nt+0.5)/(Nt+0.5),2)
+                if w<0:
+                    #this makes the result a negative number
+                    # if we break the result will be bigger than or equal to zero
+                    break
+                p1 = (((k1+1)*tfn)/(K+tfn))
+                p2 = ((k3+1)*qtf/(k3+qtf))
+                p3 = w
+                summation += p1*p2*p3
+                
+            score[D.PMID] = summation
+        M = param.GetDocNumberForLocalContext()
+        TopDocs = []
+        TopNums = []
+        new_score = dict()
+        for item in score.iterkeys():
+            if score[item] > 0:
+                new_score[item] = score[item]
+        
+        for i in range(M):
+            TopNums.append(0)
+            TopDocs.append('')
+        for D in score.iterkeys():
+            for i in range(M):
+                if score[D] > TopNums[i]:
+                    for j in range(M-i-1):
+                        TopDocs[M-j-1] = TopDocs[M-j-2]
+                        TopNums[M-j-1] = TopNums[M-j-2]
+                    TopDocs[i] = D
+                    TopNums[i] = score[D]
+                    break
+        Display._plot(new_score, q)
+        TopDocsTexts = ''        
+        TopDocsTexts = tp.Tokenize(TopDocsTexts)
+        TopDocsTexts = TextProcessor._remove_stop_words(TopDocsTexts)
+        #---STEP 2---------Calculate weight of each term which is a member of new query----------------------------
+        K = TopDocsTexts
+        Beta = 0.4
+        weight = dict()
+        MaxTFQ = 0.001
+        for term in TopDocsTexts:
+            tfq = q.get_frequency(term)
+            if tfq > MaxTFQ:
+                MaxTFQ = tfq
+        tfqN = 0
+        MaxInfo = 0
+        for term in TopDocsTexts:
+            Lambda = Document._term_frequency(' '.join(K), term)
+            Freq_t_k = Document._term_frequency(' '.join(K), term)
+            log1 = log(1.00/(1.00+Lambda),2)
+            log2 = log(Lambda/(1.00+Lambda),2)
+            InfoBO1 = -log1 - Freq_t_k * log2
+            if InfoBO1 > MaxInfo:
+                MaxInfo = InfoBO1
+        for term in TopDocsTexts:
+            Lambda = Document._term_frequency(' '.join(K), term)
+            Freq_t_k = Document._term_frequency(' '.join(K), term)
+            log1 = log(1.00/(1.00+Lambda),2)
+            log2 = log(Lambda/(1.00+Lambda),2)
+            InfoBO1 = -log1 - Freq_t_k * log2
+            tfq = q.get_frequency(term)
+            tfqN = (tfq +0.00) /MaxTFQ
+            if MaxInfo >0 :
+                weight[term] = tfqN + Beta*(InfoBO1/MaxInfo)
+            else:
+                weight[term] = 0
+        QPrime = []
+        for term in weight.iterkeys():
+            if weight[term] > 0.25:
+                QPrime.append(term)
+        return  QPrime
+    @staticmethod
+    def _extract_concepts(document,terminology,MaxMatcher):
+        """
+        document:
+        db:
+        terminology:
+        MaxMatcher:
+        
+        returns:
+                Concept List
+        """
+        # Set threshold 
+        op = Operation()
+        threshold = 0.95
+        doc_token = document
+        #print "len(doc_token) " , len(doc_token)
+        candidate_concepts = []
+        
+        #Prepare a dictionary for MaxMatcher result of tokens.
+        for token_row in doc_token:
+            if token_row not in MaxMatcher.keys():
+                extracted_concepts = DB._execute("select cid, sig from "+ terminology +"_mm where word = '" + token_row + "'")
+                MaxMatcher[token_row] = extracted_concepts
+        for current_token_counter in range(len(doc_token)-3): #skip the last 3 token
+            current_token = doc_token[current_token_counter]
+            skip_counter = 0                                           # Number of skips
+            skip_limit = 2                                        #Skip limit
+            extracted_concepts = MaxMatcher[current_token]
+            current_token_concepts = Set()
+            current_token_score = dict()
+            for c in extracted_concepts:                            # Create T_c
+                current_token_concepts.add(c[0]) 
+                current_token_score[c[0]] = c[1]
+            next_token_counter = 1                                           # Next word counter
+            next_token = doc_token[ current_token_counter + next_token_counter ]                     # t is the next word
+            while (skip_counter < skip_limit):
+                extracted_concepts = MaxMatcher[next_token]
+                next_token_concepts = Set()
+                next_token_score = dict()
+                for c in extracted_concepts:
+                    next_token_concepts.add(c[0])
+                    next_token_score[c[0]] = c[1]
+                mutual_concepts = next_token_concepts & current_token_concepts
+                if len(mutual_concepts) == 0:
+                    skip_counter = skip_counter + 1
+                else:
+                    current_token_concepts = mutual_concepts
+                    for c in current_token_concepts:
+                        current_token_score[c] += next_token_score[c]
+                next_token_counter += 1
+                if (current_token_counter + next_token_counter) < len (doc_token):
+                    next_token = doc_token[ current_token_counter + next_token_counter ]
+                else:
+                    break
+            candidate_concepts = op.union( candidate_concepts , [c for c in current_token_concepts if current_token_score[c]>threshold])
+        #print "-----------------------------------------------"
+        #print document
+        #print candidate_concepts
+        #print "-----------------------------------------------"
+        return candidate_concepts
+
+class TraditionalIR(IR):
+    db = DB()
+    def __init__(self):
+        print "Good Luck with your Traditional IR!" 
+    def Indexing(self):
+        '''
+        IR Indexing Operations
+            - Elimination of Stopwords
+            - 
+        '''
+        DB._execute("DELETE from collection_index")
+        print "Indexing is started..."
+        tp = TextProcessor() 
+        Collection._load()
+        Collection._load_tags() #loading document with PMID, tags and abstracts
+        for doc in Collection._documents:
+            index_list = []
+            for term in doc.abstract:
+                index_list.append(term)
+            if GlobalVariables.global_context_activated:
+                for term in doc.tag:
+                    index_list.append(term)
+            index_list = tp.EliminateStopWords(index_list)
+            index_list = tp.Stem(index_list)
+            doc.set_index(index_list)
+        print "Indexing is Done!"       
+
+    def retrive_documents(self,query_id):
+        k1 = 1.2
+        k3 = 8.00
+        avg_dl = 122
+        b = 1 # from 0.25 to 2.00 increase 0.25
+        q = Query(query_id)
+        #q.set_concepts(self.QueryConceptExtraction(q.text))
+        self._expand_query(q)
+        return
+        print "Retrieving Documents for: ", q.text
+        Collection._load()
+        Collection._load_go()
+        Collection._load_tags()
+        Collection._load_indexes()      #Loads documents into _documents with PMID and Index
+        score = dict()
+        N = Collection._count
+        Nt = dict()
+        for term in q.text:
+            Nt[term] = Collection._get_frequency(term)
+        counter = 0
+        for doc in Collection._documents:
+            summation = 0;
+            dl = doc.length * 1.00
+            for t in q.text:
+                tfn = doc.get_frequency(t)
+                QQ = ' '.join(q.text)
+                qtf = Document._term_frequency(QQ, t)
+                K = k1*((1-b)+b*(dl/avg_dl))
+                w = log((N-Nt[t]+0.5)/(Nt[t]+0.5),2)
+                if w<0:
+                    #this makes the result a negative number
+                    # if we break the result will be bigger than or equal to zero
+                    break
+                p1 = (((k1+1)*tfn)/(K+tfn))
+                p2 = ((k3+1)*qtf/(k3+qtf))
+                p3 = w
+                summation += p1*p2*p3
+            score[doc.PMID] = summation
+            counter += 1

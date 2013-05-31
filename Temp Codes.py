@@ -1,4 +1,58 @@
 '''
+Checking to see how many of the documents are in the collection.
+'''
+
+# Read the file which contains extracted Ids!
+'''
+from Utility import DB,TextProcessor
+db = DB()
+tp = TextProcessor()
+f = open(r"D:\Project\TREC\2005\adhoc2005narrative.txt")
+i = 0
+db.Query("delete from adhoc2005narrative;")
+for line in f:
+    query = line
+    query = query.replace("\n", '')
+    query = query.replace("'", '')
+    query = query.replace("\r", '')
+    query = "INSERT INTO adhoc2005narrative(QId, Title) VALUES ({0},'{1}');".format(i,query)
+    print query
+    db.Query(query)
+    i = i+1
+'''
+# Add the answers to other table
+'''
+from Utility import DB,TextProcessor
+db = DB()
+tp = TextProcessor()
+f = open(r"D:\Project\TREC\2005\genomics.qrels.txt")
+db.Query("delete from genomics_qrels_small;")
+counter = 0
+rowId = 0
+for line in f:
+    row = line.split("\t")
+    if row[0] != rowId:
+        counter =0
+    counter += 1
+    rowId = row[0]
+    if counter < 16:
+        print row
+        query = "INSERT INTO genomics_qrels_small(QId, docId) VALUES ({0},'{1}');".format(row[0],row[2].replace(' ',''))
+        print query
+        db.Query(query)
+'''
+
+'''
+f = open(r"d:\temp\out.txt",'w')
+doc_results = open(r'D:\Project\TREC\temp\doc_id_list.txt')
+id_list = doc_results.readlines()
+id_collection = ''
+for line in id_list:
+    id_collection += line + ' '
+f.write(id_collection)
+f.close()
+'''
+'''
 file_name = r'f:\project\ontology\mesh.xml'
 file = open(file_name)
 
